@@ -1,0 +1,10 @@
+{
+  "name": "wedding-invitation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Свадебное приглашение Shukhrat & Samira с отправкой RSVP в Telegram",
+  "engines": {
+    "node": ">=18"
+  }
+}
