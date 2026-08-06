@@ -574,6 +574,23 @@ body{font-feature-settings:"liga" 1,"kern" 1,"onum" 1;letter-spacing:.004em}
 }
 .dove{animation:doveGlide 20s ease-in-out infinite;will-change:transform}
 
+/* ============================================================
+   РАСТВОРЕНИЕ КОНВЕРТА — единственная анимация ухода обложки
+   ============================================================ */
+#cover{
+  transition:opacity .46s cubic-bezier(.22,1,.36,1),
+             transform .46s cubic-bezier(.22,1,.36,1);
+  will-change:opacity,transform;
+}
+#cover.is-dissolving{opacity:0;transform:translate3d(0,-3px,0);pointer-events:none}
+/* приглашение отрисовывается заранее — за непрозрачным конвертом.
+   Так первый кадр растворения не тратится на верстку и декодирование фото. */
+.invite{visibility:visible;opacity:.004;transform:translateZ(0)}
+body.is-previewing .invite,
+body.is-open .invite{opacity:1;visibility:visible}
+/* лепестки падают перед растворяющейся бумагой, а не за ней */
+#petals{z-index:61}
+
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
 }
@@ -1009,66 +1026,34 @@ body{font-feature-settings:"liga" 1,"kern" 1,"onum" 1;letter-spacing:.004em}
     haptic('medium');
     seal.setAttribute('disabled','disabled');
 
-    if(!HAS || RED){
-      cover.style.display='none';
+    /* приглашение показывается за конвертом ещё до растворения,
+       поэтому гость видит его проступающим сквозь исчезающую бумагу */
+    body.classList.add('is-previewing');
+
+    /* мягкое растворение через CSS-переход: только opacity и transform */
+    cover.addEventListener('transitionend', function onDissolved(e){
+      if(e.target !== cover || e.propertyName !== 'opacity') return;
+      cover.removeEventListener('transitionend', onDissolved);
+      cover.style.display = 'none';
+      body.classList.remove('animating');
+      /* тяжёлая инициализация скролла — после растворения, чтобы не ронять кадры */
       revealCard();
       haptic('success');
-      return;
-    }
-
-    body.classList.add('animating');
-
-    /* ОДНА ЦЕЛЬНАЯ СЦЕНА: камера — печать — клапан — карточка — уход конверта.
-       Все фазы перекрываются во времени, поэтому пауз между ними нет.       */
-    var tl = gsap.timeline({
-      defaults:{ ease:'power2.inOut' },
-      onComplete:function(){ body.classList.remove('animating'); }
     });
 
-    tl
-      /* 1. камера мягко приближается и сопровождает всю сцену */
-      /* снимаем бесконечные CSS-анимации, иначе они перебивают opacity у GSAP */
-      .set(['#hint','.seal-halo'], { animation:'none' }, 0)
-      .to('.envelope-wrap', { scale:1.05, duration:4.2, ease:'power1.inOut' }, 0)
-      .to('#hint',      { opacity:0, duration:.4 }, 0)
-      .to('.seal-halo', { opacity:0, duration:.4 }, 0)
+    body.classList.add('animating');
+    cover.classList.add('is-dissolving');
 
-      /* 2. печать: лёгкое нажатие, затем отходит от бумаги и тает */
-      .to('.seal', { scale:.94, duration:.18, ease:'power2.out' }, .05)
-      .to('.seal', { y:14, scale:.8, rotation:-3, opacity:0, duration:.62,
-                     ease:'power1.inOut',
-                     onStart:function(){ haptic('rigid'); } }, .26)
+    /* существующая система лепестков стартует сразу, но следующим кадром:
+       так первый кадр растворения успевает отрисоваться без рывка */
+    requestAnimationFrame(function(){ petalRain(16); });
 
-      /* 3. клапан откидывается назад — начинает раньше, чем печать исчезла */
-      .to('.env-flap', { rotateX:-172, duration:1.5, ease:'power3.inOut',
-                         transformOrigin:'top center' }, .5)
-      .set('.env-flap', { zIndex:1 }, 1.35)
-
-      /* 4. карточка выходит из глубины конверта, пока клапан ещё в движении */
-      .fromTo('.env-card',
-              { yPercent:0, scale:1, rotateX:7 },
-              { yPercent:-46, scale:1.03, rotateX:0, duration:1.75, ease:'power2.out',
-                onStart:function(){ haptic('light'); } }, .95)
-
-      /* 5. декоративный шлейф — лепестки вслед за карточкой */
-      .add(function(){ petalRain(16); }, 1.5)
-
-      /* 6. конверт опускается и растворяется, карточка тает вместе с ним */
-      .to('.envelope-wrap', { y:'24vh', opacity:0, duration:1.25, ease:'power2.inOut' }, 2.45)
-      .to('.env-card',      { opacity:0, scale:1.06, duration:.9 }, 2.55)
-      .to('.cover-petals',  { opacity:0, duration:.8 }, 2.5)
-      .to(cover, { autoAlpha:0, duration:.75,
-                   onComplete:function(){ cover.style.display='none'; } }, 2.9)
-
-      /* 7. приглашение занимает своё место — тем же непрерывным движением */
-      .add(function(){ revealCard(); haptic('success'); }, 3.15)
-      .from('.hero-band',  { y:-14, opacity:0, duration:1.0, ease:'power2.out' }, 3.25)
-      .from('.hero-photo', { scale:1.045, opacity:0, duration:1.5, ease:'power2.out' }, 3.2)
-      .from('.names',      { y:20, opacity:0, duration:1.1, ease:'power2.out' }, 3.6)
-      .from('.sub-names',  { y:14, opacity:0, duration:.95, ease:'power2.out' }, 3.78)
-      .from('.hero-rule',  { scaleX:.35, opacity:0, duration:.95, ease:'power2.out',
-                             transformOrigin:'center' }, 3.92)
-      .from('.date-line',  { y:12, opacity:0, duration:.9, ease:'power2.out' }, 4.02);
+    if(RED){                       // при отключённых анимациях — сразу, без перехода
+      cover.style.display = 'none';
+      body.classList.remove('animating');
+      revealCard();
+      haptic('success');
+    }
   }
   seal.addEventListener('click', openEnvelope);
 
