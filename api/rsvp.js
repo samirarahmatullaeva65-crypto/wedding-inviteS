@@ -49,7 +49,7 @@ function cleanText(value, maxLength) {
 }
 
 function isValidName(value) {
-  return /^[\p{L}][\p{L}\s'’-]{1,39}$/u.test(value);
+  return /^[\p{L}][\p{L}\s'’-]{1,59}$/u.test(value);
 }
 
 function getClientIp(req) {
@@ -100,7 +100,6 @@ async function readBody(req) {
 
 function buildMessage(data) {
   const { date, time } = formatDateTime();
-  const fullName = escapeHtml(`${data.firstName} ${data.lastName}`);
   const userAgent = escapeHtml(data.userAgent || '—');
 
   const telegramLine = data.telegram
@@ -109,25 +108,10 @@ function buildMessage(data) {
       )}`
     : '';
 
-  if (data.answer === 'yes') {
-    return (
-      '💍 <b>Новое подтверждение</b>\n\n' +
-      `👤 <b>Имя:</b>\n${fullName}\n\n` +
-      `👥 <b>Количество гостей:</b>\n${data.guests}\n\n` +
-      '✅ <b>Ответ:</b>\nПриду\n\n' +
-      `💬 <b>Комментарий:</b>\n${escapeHtml(data.comment || '—')}\n\n` +
-      `🌐 <b>User Agent:</b>\n${userAgent}\n\n` +
-      `📅 <b>Дата:</b>\n${date}\n\n` +
-      `🕒 <b>Время:</b>\n${time}` +
-      telegramLine
-    );
-  }
-
   return (
-    '💍 <b>Новый ответ</b>\n\n' +
-    `👤 <b>Имя:</b>\n${fullName}\n\n` +
-    '❌ <b>Ответ:</b>\nНе приду\n\n' +
-    (data.comment ? `💬 <b>Комментарий:</b>\n${escapeHtml(data.comment)}\n\n` : '') +
+    '💍 <b>Новый ответ с приглашения</b>\n\n' +
+    `👤 <b>Имя:</b>\n${escapeHtml(data.name)}\n\n` +
+    `💬 <b>Пожелания:</b>\n${escapeHtml(data.wishes || '—')}\n\n` +
     `🌐 <b>User Agent:</b>\n${userAgent}\n\n` +
     `📅 <b>Дата:</b>\n${date}\n\n` +
     `🕒 <b>Время:</b>\n${time}` +
@@ -198,19 +182,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: 'Invalid JSON body' });
   }
 
-  const firstName = cleanText(body.firstName, 40);
-  const lastName = cleanText(body.lastName, 40);
-  const answer = body.answer === 'yes' ? 'yes' : body.answer === 'no' ? 'no' : null;
-  const comment = cleanText(body.comment, 500);
+  // основная схема — { name, wishes }; старая { firstName, lastName, comment } тоже принимается
+  const name = cleanText(body.name || [body.firstName, body.lastName].filter(Boolean).join(' '), 60);
+  const wishes = cleanText(body.wishes != null ? body.wishes : body.comment, 500);
   const userAgent = cleanText(body.userAgent || req.headers['user-agent'], 300);
 
-  let guests = Number.parseInt(body.guests, 10);
-  if (!Number.isFinite(guests) || guests < 1) guests = 1;
-  if (guests > 10) guests = 10;
-
-  if (!answer) return res.status(400).json({ ok: false, error: 'Field "answer" must be "yes" or "no"' });
-  if (!isValidName(firstName)) return res.status(400).json({ ok: false, error: 'Invalid first name' });
-  if (!isValidName(lastName)) return res.status(400).json({ ok: false, error: 'Invalid last name' });
+  if (!isValidName(name)) return res.status(400).json({ ok: false, error: 'Invalid name' });
 
   let telegram = null;
   if (body.telegram && typeof body.telegram === 'object') {
@@ -222,15 +199,7 @@ export default async function handler(req, res) {
     if (!telegram.id && !telegram.username && !telegram.name) telegram = null;
   }
 
-  const message = buildMessage({
-    firstName,
-    lastName,
-    answer,
-    guests: answer === 'yes' ? guests : 1,
-    comment,
-    userAgent,
-    telegram
-  });
+  const message = buildMessage({ name, wishes, userAgent, telegram });
 
   try {
     await sendToTelegram(token, chatId, message);
@@ -240,3 +209,4 @@ export default async function handler(req, res) {
     return res.status(502).json({ ok: false, error: 'Telegram is unavailable' });
   }
 }
+
