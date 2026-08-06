@@ -505,7 +505,7 @@ body{font-feature-settings:"liga" 1,"kern" 1,"onum" 1;letter-spacing:.004em}
 .b-hero-bottom{bottom:-40px;right:-64px;width:86px;transform:rotate(10deg)}
 
 /* обращение к гостям: свисающая ветвь у правого поля */
-.b-lead{top:56px;right:-78px;width:104px}
+.b-lead{top:56px;right:-92px;width:104px}
 
 /* наша история: листья у левого поля */
 .b-story{top:38px;right:-76px;width:92px;transform:rotate(8deg)}
@@ -536,6 +536,43 @@ body{font-feature-settings:"liga" 1,"kern" 1,"onum" 1;letter-spacing:.004em}
   .b-rsvp{right:-104px;width:110px}
   .b-outro{left:-94px;width:100px}
 }
+
+/* ============================================================
+   MOTION-СЛОЙ — только новые правила, старые не тронуты
+   ============================================================ */
+
+/* 3D-геометрия конверта: клапан не должен пробивать карман */
+.envelope{transform-style:preserve-3d}
+.env-card{will-change:transform,opacity;backface-visibility:hidden}
+.env-flap{backface-visibility:visible;will-change:transform}
+.env-pocket{z-index:3}
+.seal,.seal-halo{will-change:transform,opacity}
+
+/* кружки палитры: строго одна линия, одинаковый размер и шаг, без обводок */
+.swatches{align-items:flex-start;flex-wrap:nowrap;gap:clamp(4px,1.8vw,14px);width:100%}
+.sw{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+  flex:1 1 0;width:auto;min-width:0;will-change:transform,opacity}
+.sw i{width:clamp(30px,8.4vw,44px);aspect-ratio:1/1;height:auto;flex:0 0 auto;border:0;margin:0 auto 8px;
+  box-shadow:inset 0 -6px 12px rgba(0,0,0,.07), 0 8px 14px -12px rgba(45,52,32,.6)}
+.sw span{width:100%;overflow-wrap:break-word;hyphens:auto}
+
+/* ботаника: очень медленное дыхание поверх параллакса (анимируется вложенный img) */
+.botanic img{animation:botDrift 14s ease-in-out infinite;will-change:transform}
+.botanic:nth-of-type(2n) img{animation-duration:17s;animation-delay:-4s}
+.botanic:nth-of-type(3n) img{animation-duration:19s;animation-delay:-8s}
+@keyframes botDrift{
+  0%,100%{transform:translate3d(0,0,0) rotate(0deg)}
+  50%    {transform:translate3d(0,-6px,0) rotate(.8deg)}
+}
+
+/* голубь: если GSAP не загрузился, остаётся мягкий CSS-полёт */
+@keyframes doveGlide{
+  0%,100%{transform:translate3d(0,0,0) rotate(0deg) scale(1)}
+  25%    {transform:translate3d(-15px,-12px,0) rotate(-2deg) scale(1.02)}
+  50%    {transform:translate3d(20px,5px,0) rotate(2deg) scale(.99)}
+  75%    {transform:translate3d(-5px,-8px,0) rotate(-1deg) scale(1.01)}
+}
+.dove{animation:doveGlide 20s ease-in-out infinite;will-change:transform}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
@@ -979,45 +1016,59 @@ body{font-feature-settings:"liga" 1,"kern" 1,"onum" 1;letter-spacing:.004em}
       return;
     }
 
-    /* на время анимации выключаем зерно (mix-blend-mode тормозит перерисовку) */
     body.classList.add('animating');
 
+    /* ОДНА ЦЕЛЬНАЯ СЦЕНА: камера — печать — клапан — карточка — уход конверта.
+       Все фазы перекрываются во времени, поэтому пауз между ними нет.       */
     var tl = gsap.timeline({
       defaults:{ ease:'power2.inOut' },
       onComplete:function(){ body.classList.remove('animating'); }
     });
 
-    // 1. печать: мягко уходит вниз, уменьшается и растворяется (0.5s)
-    tl.to('#hint',      { opacity:0, duration:.35 }, 0)
-      .to('.seal-halo', { opacity:0, duration:.35 }, 0)
-      .to('.seal', { scale:.8, y:15, opacity:0, duration:.5,
+    tl
+      /* 1. камера мягко приближается и сопровождает всю сцену */
+      /* снимаем бесконечные CSS-анимации, иначе они перебивают opacity у GSAP */
+      .set(['#hint','.seal-halo'], { animation:'none' }, 0)
+      .to('.envelope-wrap', { scale:1.05, duration:4.2, ease:'power1.inOut' }, 0)
+      .to('#hint',      { opacity:0, duration:.4 }, 0)
+      .to('.seal-halo', { opacity:0, duration:.4 }, 0)
+
+      /* 2. печать: лёгкое нажатие, затем отходит от бумаги и тает */
+      .to('.seal', { scale:.94, duration:.18, ease:'power2.out' }, .05)
+      .to('.seal', { y:14, scale:.8, rotation:-3, opacity:0, duration:.62,
                      ease:'power1.inOut',
-                     onStart:function(){ haptic('rigid'); } }, .1)
+                     onStart:function(){ haptic('rigid'); } }, .26)
 
-      // 2. клапан отгибается вверх в 3D (0.8s)
-      .to('.env-flap', { rotateX:-180, duration:.8, ease:'power2.inOut',
-                         transformOrigin:'top center' }, .45)
-      .set('.env-flap', { zIndex:1 }, .95)
-      .add(function(){ petalRain(18); }, .55)
+      /* 3. клапан откидывается назад — начинает раньше, чем печать исчезла */
+      .to('.env-flap', { rotateX:-172, duration:1.5, ease:'power3.inOut',
+                         transformOrigin:'top center' }, .5)
+      .set('.env-flap', { zIndex:1 }, 1.35)
 
-      // 3. карточка выезжает после того, как клапан открылся (delay 0.6s)
-      .to('.env-card', { yPercent:-100, duration:.9, ease:'power3.out',
-                         onStart:function(){ haptic('light'); } }, 1.05)
+      /* 4. карточка выходит из глубины конверта, пока клапан ещё в движении */
+      .fromTo('.env-card',
+              { yPercent:0, scale:1, rotateX:7 },
+              { yPercent:-46, scale:1.03, rotateX:0, duration:1.75, ease:'power2.out',
+                onStart:function(){ haptic('light'); } }, .95)
 
-      // 4. конверт уходит вниз и растворяется
-      .to('.envelope-wrap', { y:'22vh', opacity:0, duration:.9 }, 1.75)
-      .to('.cover-petals',  { opacity:0, duration:.6 }, 1.85)
-      .to(cover, { autoAlpha:0, duration:.6,
-                   onComplete:function(){ cover.style.display='none'; } }, 2.05)
+      /* 5. декоративный шлейф — лепестки вслед за карточкой */
+      .add(function(){ petalRain(16); }, 1.5)
 
-      // 5. приглашение проявляется
-      .add(function(){ revealCard(); haptic('success'); }, 2.3)
-      .from('.hero-band',  { y:-14, opacity:0, duration:.8 }, 2.45)
-      .from('.hero-photo', { scale:1.04, opacity:0, duration:1.1, ease:'power2.out' }, 2.4)
-      .from('.names',      { y:18, opacity:0, duration:.9, ease:'power2.out' }, 2.75)
-      .from('.sub-names',  { y:14, opacity:0, duration:.8, ease:'power2.out' }, 2.9)
-      .from('.hero-rule',  { scaleX:.4, opacity:0, duration:.8, ease:'power2.out' }, 3.0)
-      .from('.date-line',  { y:12, opacity:0, duration:.8, ease:'power2.out' }, 3.05);
+      /* 6. конверт опускается и растворяется, карточка тает вместе с ним */
+      .to('.envelope-wrap', { y:'24vh', opacity:0, duration:1.25, ease:'power2.inOut' }, 2.45)
+      .to('.env-card',      { opacity:0, scale:1.06, duration:.9 }, 2.55)
+      .to('.cover-petals',  { opacity:0, duration:.8 }, 2.5)
+      .to(cover, { autoAlpha:0, duration:.75,
+                   onComplete:function(){ cover.style.display='none'; } }, 2.9)
+
+      /* 7. приглашение занимает своё место — тем же непрерывным движением */
+      .add(function(){ revealCard(); haptic('success'); }, 3.15)
+      .from('.hero-band',  { y:-14, opacity:0, duration:1.0, ease:'power2.out' }, 3.25)
+      .from('.hero-photo', { scale:1.045, opacity:0, duration:1.5, ease:'power2.out' }, 3.2)
+      .from('.names',      { y:20, opacity:0, duration:1.1, ease:'power2.out' }, 3.6)
+      .from('.sub-names',  { y:14, opacity:0, duration:.95, ease:'power2.out' }, 3.78)
+      .from('.hero-rule',  { scaleX:.35, opacity:0, duration:.95, ease:'power2.out',
+                             transformOrigin:'center' }, 3.92)
+      .from('.date-line',  { y:12, opacity:0, duration:.9, ease:'power2.out' }, 4.02);
   }
   seal.addEventListener('click', openEnvelope);
 
@@ -1043,10 +1094,41 @@ body{font-feature-settings:"liga" 1,"kern" 1,"onum" 1;letter-spacing:.004em}
 
     gsap.to('#ringShot',{yPercent:-6,ease:'none',
       scrollTrigger:{trigger:'#ringShot',start:'top bottom',end:'bottom top',scrub:.6}});
-    gsap.to('#dove',{y:-22,x:-10,ease:'none',
-      scrollTrigger:{trigger:'#dove',start:'top bottom',end:'bottom top',scrub:.8}});
+    /* голубь парит: мягкая петля по X и Y с лёгким наклоном и дыханием масштаба */
+    var doveEl = document.getElementById('dove');
+    if(doveEl){
+      doveEl.style.animation = 'none';          // отключаем прежний CSS-float
+      gsap.timeline({ repeat:-1, defaults:{ ease:'sine.inOut' } })
+        .to(doveEl, { x:-15, y:-12, rotation:-2, scale:1.02, duration:4.6 })
+        .to(doveEl, { x:20,  y:5,   rotation:2,  scale:.99,  duration:5.4 })
+        .to(doveEl, { x:-5,  y:-8,  rotation:-1, scale:1.01, duration:4.9 })
+        .to(doveEl, { x:15,  y:0,   rotation:0,  scale:1,    duration:5.1 });
+    }
     gsap.from('.love',{scale:.7,opacity:0,duration:.9,ease:'back.out(2)',
       scrollTrigger:{trigger:'.love',start:'top 92%',once:true}});
+
+    /* палитра: кружки проявляются один за другим */
+    gsap.utils.toArray('.swatches').forEach(function(row){
+      gsap.from(row.querySelectorAll('.sw'), {
+        scrollTrigger:{ trigger:row, start:'top 90%', once:true },
+        opacity:0, scale:.88, y:12, duration:.95, ease:'power2.out', stagger:.18
+      });
+    });
+
+    /* фотография истории — едва заметное «дыхание» при появлении */
+    gsap.from('.photo-card img.shot', {
+      scrollTrigger:{ trigger:'.photo-card', start:'top 88%', once:true },
+      scale:1.02, opacity:0, duration:1.4, ease:'power2.out'
+    });
+
+    /* разделители мягко раскрываются от центра */
+    gsap.utils.toArray('.divider').forEach(function(d){
+      gsap.from(d.querySelectorAll('i'), {
+        scrollTrigger:{ trigger:d, start:'top 92%', once:true },
+        scaleX:.3, opacity:0, duration:1.1, ease:'power2.out',
+        transformOrigin:'center', stagger:.08
+      });
+    });
 
     /* ботаника: медленное проявление и едва заметный параллакс */
     gsap.utils.toArray('[data-botanic]').forEach(function(el, i){
