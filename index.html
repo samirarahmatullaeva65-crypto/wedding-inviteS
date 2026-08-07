@@ -1022,25 +1022,44 @@ body.is-open .invite{opacity:1;visibility:visible}
     musicStarted = true;
 
     music.loop = false;                     // играет один раз до конца файла
-    music.volume = 0;
+    music.volume = 0;                       // стартуем с тишины и мягко выводим
 
-    function startFrom19(){
-      try { music.currentTime = 19; } catch(e){}
-      var p = music.play();
-      if(p && p.catch) p.catch(function(){});   // тихо игнорируем отказ браузера
+    /* перемотка на 19-ю секунду: сразу, если метаданные уже есть,
+       иначе — как только они появятся. Сам play() при этом не откладывается. */
+    function seekTo19(){
+      try { if(music.currentTime < 19) music.currentTime = 19; }
+      catch(error){ console.error('Wedding music seek failed:', error); }
+    }
+    if(music.readyState >= 1) seekTo19();
+    else music.addEventListener('loadedmetadata', seekTo19, { once:true });
 
+    /* плавное нарастание громкости 0 → 0.7 примерно за 850 мс */
+    var faded = false;
+    function fadeIn(){
+      if(faded) return;                     // ровно один раз
+      faded = true;
       var t0 = 0;
-      requestAnimationFrame(function fade(now){          // мягкое нарастание ~0.9с
+      requestAnimationFrame(function step(now){
         if(!t0) t0 = now;
-        var k = Math.min((now - t0) / 900, 1);
-        music.volume = k * k * 0.85;                     // плавная кривая до 85%
-        if(k < 1) requestAnimationFrame(fade);
+        var k = Math.min((now - t0) / 850, 1);
+        music.volume = k * k * 0.7;
+        if(k < 1) requestAnimationFrame(step);
       });
     }
+    /* страховка: если файл ещё грузился, промис play() может не разрешиться —
+       тогда нарастание запускает событие начала воспроизведения */
+    music.addEventListener('playing', fadeIn, { once:true });
 
-    /* currentTime можно задавать, только когда файл уже позиционируется */
-    if(music.readyState >= 1) startFrom19();
-    else music.addEventListener('loadedmetadata', startFrom19, { once:true });
+    /* play() вызывается синхронно внутри пользовательского клика —
+       иначе браузер и Telegram WebView заблокируют воспроизведение */
+    var playPromise = music.play();
+    if(playPromise && playPromise.then){
+      playPromise
+        .then(fadeIn)
+        .catch(function(error){ console.error('Wedding music playback failed:', error); });
+    } else {
+      fadeIn();
+    }
   }
 
   /* =============== ОТКРЫТИЕ КОНВЕРТА =============== */
