@@ -826,6 +826,8 @@ body.is-open .invite{opacity:1;visibility:visible}
 
 <div id="lightbox"><img alt=""></div>
 
+<audio id="weddingMusic" src="music/wedding-march.mp3" preload="auto"></audio>
+
 <!-- ====================== СКРИПТЫ ====================== -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -1012,6 +1014,35 @@ body.is-open .invite{opacity:1;visibility:visible}
     }
   }
 
+  /* =============== МУЗЫКА =============== */
+  var music = document.getElementById('weddingMusic'), musicStarted = false;
+
+  function playWeddingMusic(){
+    if(!music || musicStarted) return;      // только при первом открытии
+    musicStarted = true;
+
+    music.loop = false;                     // играет один раз до конца файла
+    music.volume = 0;
+
+    function startFrom19(){
+      try { music.currentTime = 19; } catch(e){}
+      var p = music.play();
+      if(p && p.catch) p.catch(function(){});   // тихо игнорируем отказ браузера
+
+      var t0 = 0;
+      requestAnimationFrame(function fade(now){          // мягкое нарастание ~0.9с
+        if(!t0) t0 = now;
+        var k = Math.min((now - t0) / 900, 1);
+        music.volume = k * k * 0.85;                     // плавная кривая до 85%
+        if(k < 1) requestAnimationFrame(fade);
+      });
+    }
+
+    /* currentTime можно задавать, только когда файл уже позиционируется */
+    if(music.readyState >= 1) startFrom19();
+    else music.addEventListener('loadedmetadata', startFrom19, { once:true });
+  }
+
   /* =============== ОТКРЫТИЕ КОНВЕРТА =============== */
   function revealCard(){
     body.classList.remove('is-locked');
@@ -1025,6 +1056,10 @@ body.is-open .invite{opacity:1;visibility:visible}
     opened = true;
     haptic('medium');
     seal.setAttribute('disabled','disabled');
+
+    /* музыка стартует в этом же пользовательском жесте — с 19-й секунды,
+       один раз, с мягким нарастанием громкости */
+    playWeddingMusic();
 
     /* приглашение показывается за конвертом ещё до растворения,
        поэтому гость видит его проступающим сквозь исчезающую бумагу */
